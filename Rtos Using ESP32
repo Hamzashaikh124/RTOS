@@ -1,0 +1,245 @@
+#if CONFIG_FREERTOS_UNICORE
+#define Core 0
+#else
+#define Core 1
+#endif
+
+#define LED           21
+#define error_LED     15
+#define Button_Pin    22
+#define signal_wave   35
+#define analog_pin    34
+
+bool               error_code =         0;
+unsigned int       avgvalue1 =          0;
+unsigned int       avgvalue2 =          0;
+unsigned int       avgvalue3 =          0;
+unsigned int       avgvalue4 =          0;
+unsigned int       buttonState =        0; 
+unsigned int       potValue = 0;
+
+// initialization of the queue 
+
+static QueueHandle_t     queue;
+static SemaphoreHandle_t mutex;
+
+
+void Task1(void *pvParameters);
+void Task2(void *pvParameters);
+void Task3(void *pvParameters);
+void Task4(void *pvParameters);
+void Task5(void *pvParameters);
+void Task6(void *pvParameters);
+void Task7(void *pvParameters);
+void Task8(void *pvParameters);
+void Task9(void *pvParameters);
+
+const TickType_t xDelay1 =  12.25 / portTICK_PERIOD_MS;
+const TickType_t xDelay2 =  200 / portTICK_PERIOD_MS;
+const TickType_t xDelay3 =  1000 / portTICK_PERIOD_MS;
+const TickType_t xDelay4 =  41.66 / portTICK_PERIOD_MS;
+const TickType_t xDelay5 =  41.666 / portTICK_PERIOD_MS;
+const TickType_t xDelay6 =  100 / portTICK_PERIOD_MS;
+const TickType_t xDelay7 =  333.333 / portTICK_PERIOD_MS;
+const TickType_t xDelay8 =  333.333 / portTICK_PERIOD_MS;
+const TickType_t xDelay9 =  1000 / portTICK_PERIOD_MS;
+
+
+
+
+typedef struct s_data //stucture for rtos to call
+ {
+   byte         pressedd             :   1;
+   unsigned int frequency_value      :  20; 
+   unsigned int avg_pot_value        :  12; // find avg value untl call
+ };
+
+s_data datas; 
+
+
+void setup() {
+  
+  Serial.begin(115200);
+  
+  pinMode(LED, OUTPUT);
+  pinMode(Button_Pin,  INPUT);
+  pinMode(signal_wave,  INPUT);
+  pinMode(analog_pin,  INPUT);
+  pinMode(error_LED, OUTPUT);
+
+  queue = xQueueCreate(4,sizeof(int)); //create qeue function size of 4
+  mutex = xSemaphoreCreateMutex(); // initial mutex on semaphore
+  
+  xTaskCreatePinnedToCore(Task1,"task1",4096,NULL,1,NULL,Core); 
+  xTaskCreatePinnedToCore(Task2,"task2",4096,NULL,1,NULL,Core);
+  xTaskCreatePinnedToCore(Task3,"task3",4096,NULL,1,NULL,Core);
+  xTaskCreatePinnedToCore(Task4,"task4",4096,NULL,1,NULL,Core); 
+  xTaskCreatePinnedToCore(Task5,"task5",4096,NULL,1,NULL,Core);
+  xTaskCreatePinnedToCore(Task6,"task6",4096,NULL,1,NULL,Core);
+  xTaskCreatePinnedToCore(Task7,"task7",4096,NULL,1,NULL,Core); 
+  xTaskCreatePinnedToCore(Task8,"task8",4096,NULL,1,NULL,Core);
+  xTaskCreatePinnedToCore(Task9,"task9",4096,NULL,1,NULL,Core);
+  
+ 
+}
+
+
+void loop() {  }
+
+void Task1(void *pvParameters)
+{
+  (void) pvParameters;
+  for(;;){
+    digitalWrite(LED, HIGH); //turn on led
+    delayMicroseconds(50);
+    digitalWrite(LED, LOW);//turn off led 
+    vTaskDelay(xDelay1); // delay function of Rtos
+  }
+}
+
+
+void Task2(void *pvParameters)
+{
+  (void) pvParameters;
+  for(;;)
+{
+   xSemaphoreTake(mutex, portMAX_DELAY);
+   buttonState = digitalRead(Button_Pin); //Read button_pin states and save value in Button state variable
+   if (buttonState == HIGH)   //if button is PRESSED      
+      {
+      datas.pressedd = 1;
+      }
+    else
+    {
+      datas.pressedd = 0;
+    }
+    xSemaphoreGive(mutex); // call semaphore, mutex handler
+    vTaskDelay(xDelay2); // delay function of Rtos
+ }
+}
+
+void Task3(void *pvParameters)
+{
+  /* Use a semaphore to write    
+   */
+  (void) pvParameters;
+ 
+  for(;;){
+    unsigned long frequency;
+    unsigned long half_period_high = pulseIn(signal_wave, HIGH);
+    unsigned long half_period_low  = pulseIn(signal_wave, LOW);
+    if((half_period_high + half_period_low) == 0){ 
+      frequency = 0;
+    }
+    else{
+      frequency = 1000000/(half_period_high + half_period_low);//add high and  low frequency and divide with 1000 khz 
+    }
+  
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    datas.frequency_value = frequency;
+    xSemaphoreGive(mutex); // call semaphore, mutex handler
+    vTaskDelay(xDelay3); // delay function of Rtos
+  }
+}
+
+
+void Task4(void *pvParameters)
+{
+  (void) pvParameters;
+   for(;;){
+    potValue = analogRead(analog_pin); //read analog pin and save value on portvalue
+    xQueueSend(queue,&potValue,1); //send port value to queue
+ 
+    vTaskDelay(xDelay4); // delay function of Rtos
+    }
+}
+
+
+void Task5(void *pvParameters)
+{ 
+  (void) pvParameters;
+  
+  for(;;)
+ {
+    
+   /// getting new value on potpin and addd on avg value
+    avgvalue4 = avgvalue3; 
+    avgvalue3 = avgvalue2;
+    avgvalue2 = avgvalue1;
+    xQueueReceive(queue,&avgvalue1,portMAX_DELAY);//receive  port average value on queue
+    
+    xSemaphoreTake(mutex,portMAX_DELAY);//protecting data
+    datas.avg_pot_value = (avgvalue1 + avgvalue2 + avgvalue3 + avgvalue4)/4; // finding average fo collective data
+    xSemaphoreGive(mutex); // call semaphore, mutex handler
+    
+    vTaskDelay(xDelay5); // delay function of Rtos
+  }
+}
+
+
+void Task6(void *pvParameters)
+{
+  (void) pvParameters;
+  for(;;){
+    for(int t6=0; t6<1000; t6++){
+      __asm__ __volatile__ ("nop");
+    }
+    
+    vTaskDelay(xDelay6); // delay function of Rtos
+  }
+}
+
+void Task7(void *pvParameters)
+{ 
+  (void) pvParameters;
+  for(;;){
+    xSemaphoreTake(mutex,portMAX_DELAY); // protection of the task 6
+    int half_of_max=1.65;
+    if(datas.avg_pot_value > half_of_max){
+      error_code = 1;
+    }
+    else{
+      error_code = 0;
+    }
+    xSemaphoreGive(mutex); //call semaphore, mutex handler
+    
+    vTaskDelay(xDelay7); // delay function of Rtos
+  }
+}
+
+void Task8(void *pvParameters){
+  (void) pvParameters;
+  for(;;){
+  /*
+  * in Task 8 if error_code variable is equal to 1  
+  * it turn one led
+  * else turn off led
+  */
+    if(error_code){
+      digitalWrite(error_LED,HIGH);
+    }
+    else{
+      digitalWrite(error_LED,LOW);
+    }
+    vTaskDelay(xDelay8); // delay function of Rtos
+  }
+}
+
+void Task9(void *pvParameters)//in task 9 they print on serial monitor when button is pressed
+{ 
+  (void) pvParameters;
+  for(;;){
+    if(digitalRead(Button_Pin))//when button pressed
+    {
+      xSemaphoreTake(mutex, portMAX_DELAY); //protect data when other task execute
+      Serial.print  ("Pushbutton value : ");
+      Serial.println(datas.pressedd);
+      Serial.print  ("frequency of the signal = ");
+      Serial.println(datas.frequency_value);
+      Serial.print  ("Filtered analogue input value = ");
+      Serial.println(datas.avg_pot_value);
+      xSemaphoreGive(mutex); // call semaphore, mutex handler
+    } 
+    vTaskDelay(xDelay9); // delay function of Rtos
+  }
+}
